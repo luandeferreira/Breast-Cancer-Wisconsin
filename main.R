@@ -1,62 +1,69 @@
-# Instale os pacotes descomentando a linha abaixo caso seja a primeira execução
-# install.packages(c("caret", "mlbench", "e1071", "rpart", "randomForest", "nnet"))
+# Carrega a biblioteca necessária
+library(caret)
 
-suppressPackageStartupMessages(library(caret))
-suppressPackageStartupMessages(library(mlbench))
+cat("--- Carregando Arquivo wdbc.data ---\n")
 
-cat("--- Carregando Base de Dados Breast Cancer Wisconsin ---\n")
-data(BreastCancer)
+# 1. Lê o arquivo wdbc.data. Como ele NÃO tem cabeçalho, usamos header = FALSE.
+# O R vai chamar as colunas automaticamente de V1, V2, V3...
+df <- read.csv("wdbc.data", header = FALSE)
 
-# Removendo NAs (o dataset do mlbench possui alguns valores faltantes) e a coluna ID
-df <- na.omit(BreastCancer)
+# 2. Entendendo o wdbc.data:
+# Coluna 1 (V1): ID do paciente
+# Coluna 2 (V2): Diagnóstico (M = Maligno, B = Benigno)
+# Colunas 3 a 32 (V3 a V32): As características da célula
+
+# Removemos a coluna de ID (V1), pois identificador de paciente não serve para treinar modelo
 df <- df[, -1]
 
-# Convertendo colunas para numéricas para permitir a padronização
-for(i in 1:9) {
-  df[, i] <- as.numeric(as.character(df[, i]))
-}
+# Agora o Diagnóstico (antiga V2) virou a primeira coluna. 
+# Vamos renomeá-la para "diagnosis" para ficar fácil de referenciar
+colnames(df)[1] <- "diagnosis"
 
-# Fixando a semente aleatória para reprodutibilidade
+# O R exige que a variável alvo seja um "fator" (categoria) para fazer classificação
+df$diagnosis <- as.factor(df$diagnosis)
+
+# Fixamos a semente para que o resultado seja o mesmo toda vez que você rodar (reprodutibilidade)
 set.seed(42)
 
-# Divisão de Treino e Teste (80/20)
-trainIndex <- createDataPartition(df$Class, p = .8, list = FALSE, times = 1)
+# Divisão de Treino (80%) e Teste (20%)
+trainIndex <- createDataPartition(df$diagnosis, p = .8, list = FALSE, times = 1)
 dfTrain <- df[trainIndex,]
 dfTest  <- df[-trainIndex,]
 
-# Configurando o controle do treinamento (Cross-Validation simples para otimização interna)
+# Configuração da Validação Cruzada (ajuda o modelo a não decorar os dados)
 fitControl <- trainControl(method = "cv", number = 5)
 
-# Lista para armazenar os modelos treinados
+# Lista para guardar os 4 modelos exigidos
 modelos <- list()
 
 cat("Treinando modelos...\n")
 
 # 1. Naive Bayes
 set.seed(42)
-modelos[["Naive Bayes"]] <- train(Class ~ ., data = dfTrain, method = "naive_bayes", preProcess = c("center", "scale"), trControl = fitControl)
+modelos[["Naive Bayes"]] <- train(diagnosis ~ ., data = dfTrain, method = "naive_bayes", preProcess = c("center", "scale"), trControl = fitControl)
 
 # 2. Árvore de Decisão
 set.seed(42)
-modelos[["Árvore de Decisão"]] <- train(Class ~ ., data = dfTrain, method = "rpart", preProcess = c("center", "scale"), trControl = fitControl)
+modelos[["Árvore de Decisão"]] <- train(diagnosis ~ ., data = dfTrain, method = "rpart", preProcess = c("center", "scale"), trControl = fitControl)
 
 # 3. Random Forest
 set.seed(42)
-modelos[["Random Forest"]] <- train(Class ~ ., data = dfTrain, method = "rf", preProcess = c("center", "scale"), trControl = fitControl)
+modelos[["Random Forest"]] <- train(diagnosis ~ ., data = dfTrain, method = "rf", preProcess = c("center", "scale"), trControl = fitControl)
 
-# 4. Redes Neurais
+# 4. Redes Neurais (MLP simples)
 set.seed(42)
-modelos[["Redes Neurais"]] <- train(Class ~ ., data = dfTrain, method = "nnet", preProcess = c("center", "scale"), trControl = fitControl, trace = FALSE)
+modelos[["Redes Neurais"]] <- train(diagnosis ~ ., data = dfTrain, method = "nnet", preProcess = c("center", "scale"), trControl = fitControl, trace = FALSE)
 
 cat("\n--- Resultados da Avaliação ---\n\n")
 
-# Avaliação no conjunto de teste
+# Vamos testar cada modelo no conjunto de dados separados para teste
 for(nome in names(modelos)) {
   predicoes <- predict(modelos[[nome]], newdata = dfTest)
   
-  # Calculando a matriz de confusão e métricas
-  cm <- confusionMatrix(predicoes, dfTest$Class, positive = "malignant")
+  # Cria a matriz de confusão. Definimos positive = "M" porque acertar o Maligno é o nosso foco.
+  cm <- confusionMatrix(predicoes, dfTest$diagnosis, positive = "M")
   
+  # Imprime as métricas no console
   cat(paste("Modelo:", nome, "\n"))
   cat(sprintf("Acurácia:  %.4f\n", cm$overall["Accuracy"]))
   cat(sprintf("Precisão:  %.4f\n", cm$byClass["Pos Pred Value"]))
