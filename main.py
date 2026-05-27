@@ -1,5 +1,4 @@
 import pandas as pd
-from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.naive_bayes import GaussianNB
@@ -9,10 +8,27 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 
 def main():
-    print("--- Carregando Base de Dados Breast Cancer Wisconsin ---")
-    data = load_breast_cancer()
-    X = pd.DataFrame(data.data, columns=data.feature_names)
-    y = data.target # 0: maligno, 1: benigno
+    print("--- Carregando Arquivo wdbc.data ---")
+    
+    # 1. Lê o arquivo local, igual fizemos no R (sem cabeçalho)
+    try:
+        df = pd.read_csv('wdbc.data', header=None)
+    except FileNotFoundError:
+        print("Erro: Arquivo 'wdbc.data' não encontrado. Verifique se está na mesma pasta.")
+        return
+
+    # 2. Entendendo o df:
+    # Coluna 0: ID do paciente (descartar)
+    # Coluna 1: Diagnóstico (M ou B)
+    # Colunas 2 em diante: Características numéricas
+    
+    # Separando as variáveis (X) do alvo (y)
+    X = df.iloc[:, 2:] # Pega da coluna 2 até o final
+    y_raw = df.iloc[:, 1]  # Pega apenas a coluna 1
+    
+    # Mapeando M (Maligno) para 1 e B (Benigno) para 0. 
+    # Isso alinha a classe positiva com o foco médico (encontrar o câncer)
+    y = y_raw.map({'M': 1, 'B': 0})
 
     # Divisão de Treino e Teste (80/20) com semente fixa para reprodutibilidade
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
@@ -51,7 +67,8 @@ def main():
         print(f"Precisão:  {prec:.4f}")
         print(f"Revocação: {rec:.4f}")
         print(f"F1-Score:  {f1:.4f}")
-        print(f"Matriz de Confusão:\n{cm}")
+        # A matriz do sklearn sai em formato um pouco diferente do R, mas a leitura é a mesma
+        print(f"Matriz de Confusão:\n{cm}") 
         print("-" * 30)
 
 if __name__ == "__main__":
