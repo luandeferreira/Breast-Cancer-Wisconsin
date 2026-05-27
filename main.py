@@ -1,75 +1,67 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 from sklearn.naive_bayes import GaussianNB
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.model_selection import GridSearchCV # Biblioteca para o Bônus!
 
-def main():
-    print("--- Carregando Arquivo wdbc.data ---")
-    
-    # 1. Lê o arquivo local, igual fizemos no R (sem cabeçalho)
-    try:
-        df = pd.read_csv('wdbc.data', header=None)
-    except FileNotFoundError:
-        print("Erro: Arquivo 'wdbc.data' não encontrado. Verifique se está na mesma pasta.")
-        return
+# 1. Carregar os dados já divididos e idênticos ao R
+treino = pd.read_csv("treino.csv")
+teste = pd.read_csv("teste.csv")
 
-    # 2. Entendendo o df:
-    # Coluna 0: ID do paciente (descartar)
-    # Coluna 1: Diagnóstico (M ou B)
-    # Colunas 2 em diante: Características numéricas
-    
-    # Separando as variáveis (X) do alvo (y)
-    X = df.iloc[:, 2:] # Pega da coluna 2 até o final
-    y_raw = df.iloc[:, 1]  # Pega apenas a coluna 1
-    
-    # Mapeando M (Maligno) para 1 e B (Benigno) para 0. 
-    # Isso alinha a classe positiva com o foco médico (encontrar o câncer)
-    y = y_raw.map({'M': 1, 'B': 0})
+X_train = treino.drop(columns=['diagnostico'])
+y_train = treino['diagnostico']
+X_test = teste.drop(columns=['diagnostico'])
+y_test = teste['diagnostico']
 
-    # Divisão de Treino e Teste (80/20) com semente fixa para reprodutibilidade
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+# 2. Padronização (O fit é feito APENAS no treino)
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
 
-    # Pré-processamento: Padronização dos dados (Z-score)
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+# Função para imprimir os resultados
+def avaliar_modelo(nome, y_true, y_pred):
+    print(f"--- {nome} ---")
+    print(f"Acurácia : {accuracy_score(y_true, y_pred):.4f}")
+    print(f"Precisão : {precision_score(y_true, y_pred):.4f}")
+    print(f"Revocação: {recall_score(y_true, y_pred):.4f}")
+    print(f"F1-Score : {f1_score(y_true, y_pred):.4f}")
+    print("Matriz de Confusão:\n", confusion_matrix(y_true, y_pred))
+    print("-" * 30)
 
-    # Dicionário com os 4 modelos obrigatórios
-    modelos = {
-        "Naive Bayes": GaussianNB(),
-        "Árvore de Decisão": DecisionTreeClassifier(random_state=42),
-        "Random Forest": RandomForestClassifier(random_state=42, n_estimators=100),
-        "Redes Neurais (MLP)": MLPClassifier(random_state=42, max_iter=500)
-    }
+# --- 3. Treinamento dos Modelos ---
 
-    print("\n--- Resultados da Avaliação ---\n")
-    
-    for nome, modelo in modelos.items():
-        # Treinamento
-        modelo.fit(X_train_scaled, y_train)
-        
-        # Predição
-        y_pred = modelo.predict(X_test_scaled)
-        
-        # Métricas
-        acc = accuracy_score(y_test, y_pred)
-        prec = precision_score(y_test, y_pred)
-        rec = recall_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred)
-        cm = confusion_matrix(y_test, y_pred)
-        
-        print(f"Modelo: {nome}")
-        print(f"Acurácia:  {acc:.4f}")
-        print(f"Precisão:  {prec:.4f}")
-        print(f"Revocação: {rec:.4f}")
-        print(f"F1-Score:  {f1:.4f}")
-        # A matriz do sklearn sai em formato um pouco diferente do R, mas a leitura é a mesma
-        print(f"Matriz de Confusão:\n{cm}") 
-        print("-" * 30)
+# Naive Bayes
+nb = GaussianNB()
+nb.fit(X_train_scaled, y_train)
+avaliar_modelo("Naive Bayes", y_test, nb.predict(X_test_scaled))
 
-if __name__ == "__main__":
-    main()
+# Decision Tree
+dt = DecisionTreeClassifier(random_state=42)
+dt.fit(X_train_scaled, y_train)
+avaliar_modelo("Decision Tree", y_test, dt.predict(X_test_scaled))
+
+# --- BÔNUS: RANDOM FOREST COM GRIDSEARCH CV ---
+print("\n[BÔNUS] Otimizando hiperparâmetros da Random Forest...\n")
+rf = RandomForestClassifier(random_state=42)
+
+# Definimos as combinações de parâmetros que o modelo vai testar
+parametros_rf = {
+    'n_estimators': [50, 100, 150],       # Número de árvores
+    'max_depth': [None, 10, 20],          # Profundidade máxima
+    'min_samples_split': [2, 5]           # Mínimo de amostras para dividir um nó
+}
+
+# O GridSearchCV vai testar todas as combinações acima usando validação cruzada (cv=5)
+grid_rf = GridSearchCV(estimator=rf, param_grid=parametros_rf, cv=5, scoring='f1', n_jobs=-1)
+grid_rf.fit(X_train_scaled, y_train)
+
+print(f"Melhores parâmetros encontrados: {grid_rf.best_params_}")
+avaliar_modelo("Random Forest (Otimizada)", y_test, grid_rf.predict(X_test_scaled))
+
+# Redes Neurais (MLP)
+mlp = MLPClassifier(max_iter=1000, random_state=42)
+mlp.fit(X_train_scaled, y_train)
+avaliar_modelo("Rede Neural (MLP)", y_test, mlp.predict(X_test_scaled))
